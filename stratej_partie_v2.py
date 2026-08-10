@@ -65,9 +65,31 @@ def charger():
 FICHIER_PARTIES = "stratej_parties.pkl"
 
 
-def sauvegarder_parties(parties: dict):
-    with open(FICHIER_PARTIES, "wb") as f:
-        pickle.dump(parties, f)
+# Registre unique en mémoire : vit dans CE module, donc les objets et la
+# classe Partie proviennent toujours de la même instance de module (sinon
+# pickle refuse de sérialiser : « it's not the same object as ... »).
+_REGISTRE = None
+
+
+def registre() -> dict:
+    """Dictionnaire {nom de partie: Partie} partagé par toutes les sessions."""
+    global _REGISTRE
+    if _REGISTRE is None:
+        _REGISTRE = charger_parties()
+    return _REGISTRE
+
+
+def sauvegarder_parties(parties: dict = None):
+    """Sauvegarde best-effort : en cas d'échec (disque en lecture seule sur
+    certains hébergements, conflit de rechargement de module), la partie reste
+    intacte en mémoire et l'application continue de fonctionner."""
+    parties = registre() if parties is None else parties
+    try:
+        with open(FICHIER_PARTIES, "wb") as f:
+            pickle.dump(parties, f)
+        return True
+    except Exception:
+        return False
 
 
 def charger_parties() -> dict:

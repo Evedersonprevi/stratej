@@ -15,7 +15,7 @@ import streamlit as st
 
 from stratej_moteur_v2 import (Parametres, Produit, Decisions,
                                DecisionsProduit, Simulation)
-from stratej_partie_v2 import (Partie, sauvegarder_parties, charger_parties)
+from stratej_partie_v2 import Partie, sauvegarder_parties, registre
 
 st.set_page_config(page_title="Stratèj", page_icon="📊", layout="wide")
 
@@ -94,9 +94,10 @@ def barre_capacite(total_prod, capacite):
         unsafe_allow_html=True)
 
 
-@st.cache_resource
 def etat_partage():
-    return {"parties": charger_parties()}
+    # Le registre vit dans stratej_partie_v2 : partagé par toutes les sessions
+    # et toujours cohérent avec la classe Partie du même module.
+    return {"parties": registre()}
 
 
 NIVEAUX_DEMANDE = {
