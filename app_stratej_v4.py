@@ -29,7 +29,10 @@ st.markdown("""
     border-radius: 10px;
     padding: 12px 16px;
 }
-[data-testid="stMetricLabel"] p { color: #5A6B87; font-size: 0.85rem; }
+/* Couleurs de texte explicites : lisible même si l'appareil est en mode sombre */
+[data-testid="stMetricValue"] { color: #1E2430 !important; }
+[data-testid="stMetricValue"] div { color: #1E2430 !important; }
+[data-testid="stMetricLabel"] p { color: #5A6B87 !important; font-size: 0.85rem; }
 button[data-baseweb="tab"] { font-weight: 600; }
 .bandeau {
     background: linear-gradient(100deg, #1F3864 0%, #2E5FA3 100%);
