@@ -16,6 +16,7 @@ import streamlit as st
 from stratej_moteur_v2 import (Parametres, Produit, Decisions,
                                DecisionsProduit, Simulation)
 from stratej_partie_v2 import Partie, sauvegarder_parties, registre
+from stratej_debriefing import debriefing
 
 st.set_page_config(page_title="Stratèj", page_icon="📊", layout="wide")
 
@@ -495,8 +496,8 @@ if role == "Animateur":
     c3.metric("Produits", len(sim.par.produits))
     c4.metric("Statut", "Terminée" if partie.terminee else "En cours")
 
-    onglets = st.tabs(["🎮 Ronde en cours", "📈 Résultats", "🏆 Classement",
-                       "🔑 Codes d'accès", "⚙️ Administration"])
+    onglets = st.tabs(["🎮 Ronde en cours", "📈 Résultats", "🧭 Débriefings",
+                       "🏆 Classement", "🔑 Codes d'accès", "⚙️ Administration"])
 
     with onglets[0]:
         if partie.terminee:
@@ -551,6 +552,38 @@ if role == "Animateur":
                     afficher_ratios(rap)
 
     with onglets[2]:
+        if not partie.historique:
+            st.info("Les débriefings apparaîtront après le premier trimestre.")
+        else:
+            st.caption("Analyse automatique des décisions de chaque équipe. "
+                       "Les équipes voient la même analyse dans leur portail ; "
+                       "la version ci-dessous ajoute des pistes d'animation.")
+            c1, c2 = st.columns([1, 2])
+            t_choisi = c1.selectbox("Trimestre ", list(range(len(partie.historique), 0, -1)),
+                                    key="t_debrief")
+            vue = c2.radio("Affichage", ["Toutes les équipes", "Une équipe"],
+                           horizontal=True, key="vue_debrief")
+            idx = t_choisi - 1
+            if vue == "Une équipe":
+                eq_choisie = st.selectbox("Équipe", [e.nom for e in sim.equipes],
+                                          key="eq_debrief")
+                with st.container(border=True):
+                    st.markdown(debriefing(partie, eq_choisie, idx,
+                                           pour_professeur=True))
+            else:
+                for e_ in sim.equipes:
+                    with st.expander(f"🧭 {e_.nom}", expanded=False):
+                        st.markdown(debriefing(partie, e_.nom, idx,
+                                               pour_professeur=True))
+            texte_complet = "\n\n---\n\n".join(
+                debriefing(partie, e_.nom, idx, pour_professeur=True)
+                for e_ in sim.equipes)
+            st.download_button("⬇️ Télécharger tous les débriefings (Markdown)",
+                               texte_complet,
+                               file_name=f"debriefings_T{t_choisi}.md",
+                               mime="text/markdown")
+
+    with onglets[3]:
         if partie.historique:
             total_p = sum(partie.poids_classement.values()) or 1
             st.caption("Pondération actuelle : " + " · ".join(
@@ -576,13 +609,13 @@ if role == "Animateur":
         else:
             st.info("Le classement apparaîtra après le premier trimestre.")
 
-    with onglets[3]:
+    with onglets[4]:
         st.write("À distribuer aux équipes (chaque équipe garde son code confidentiel) :")
         st.dataframe(pd.DataFrame([{"Équipe": n, "Code d'accès": c}
                                    for n, c in partie.codes.items()]),
                      hide_index=True, use_container_width=True)
 
-    with onglets[4]:
+    with onglets[5]:
         st.subheader("Pondération du classement")
         st.caption("Modifiable en cours de partie ; s'applique au classement courant "
                    "et aux prochains instantanés.")
@@ -697,6 +730,9 @@ else:
             rap = e.rapports[-1]
             if rap["ajustements"]:
                 st.warning(" · ".join(rap["ajustements"]))
+            with st.container(border=True):
+                st.markdown("### 🧭 Votre débriefing")
+                st.markdown(debriefing(partie, nom))
             r1, r2, r3 = st.columns(3)
             r1.metric("Revenus du trimestre", f"{rap['etat_resultats']['revenus']:,.0f} HTG")
             r2.metric("Bénéfice net", f"{rap['etat_resultats']['benefice_net']:,.0f} HTG")
