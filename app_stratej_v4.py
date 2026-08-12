@@ -42,16 +42,33 @@ button[data-baseweb="tab"] { font-weight: 600; }
     padding: 18px 26px;
     margin-bottom: 18px;
 }
-.bandeau h1 { color: #FFFFFF; font-size: 1.55rem; margin: 0; letter-spacing: .3px; }
+.marque { margin-bottom: 8px; line-height: 0; }
+.bandeau h1 { color: #FFFFFF; font-size: 1.15rem; font-weight: 600; margin: 0;
+              letter-spacing: .3px; opacity: .95; }
 .bandeau p  { color: #C9D6EA; margin: 4px 0 0 0; font-size: .95rem; }
 </style>
 """, unsafe_allow_html=True)
 
 
+LOGO_SVG = """
+<svg viewBox="0 0 620 250" height="54" xmlns="http://www.w3.org/2000/svg">
+  <text x="0" y="190" font-family="Helvetica, Arial, sans-serif" font-size="145"
+        font-weight="700" fill="#FFFFFF" letter-spacing="-1">Stratèj</text>
+  <path d="M 4 226 C 140 226 220 218 320 196 S 480 140 570 112"
+        stroke="#C9A227" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <circle cx="570" cy="112" r="13" fill="#C9A227"/>
+</svg>
+"""
+
+
 def entete(titre, sous_titre=""):
-    st.markdown('<div class="bandeau"><h1>' + titre + '</h1>'
-                + ('<p>' + sous_titre + '</p>' if sous_titre else '')
-                + '</div>', unsafe_allow_html=True)
+    """Bandeau de marque : logotype + intitulé de l'écran."""
+    st.markdown(
+        '<div class="bandeau">'
+        '<div class="marque">' + LOGO_SVG + '</div>'
+        '<h1>' + titre + '</h1>'
+        + ('<p>' + sous_titre + '</p>' if sous_titre else '')
+        + '</div>', unsafe_allow_html=True)
 
 
 def rang_equipe(partie, nom):
@@ -118,8 +135,12 @@ NOMS_CRITERES = {
 
 etat = etat_partage()
 
-st.sidebar.title("📊 Stratèj")
-st.sidebar.caption("Simulation d'entreprise — v4")
+st.sidebar.markdown(
+    '<div style="font-size:1.5rem;font-weight:700;color:#1F3864;'
+    'letter-spacing:-.5px;">Stratèj</div>'
+    '<div style="height:3px;width:54px;background:#C9A227;'
+    'border-radius:2px;margin:3px 0 8px 0;"></div>', unsafe_allow_html=True)
+st.sidebar.caption("Simulation d'entreprise")
 role = st.sidebar.radio("Je suis :", ["Équipe", "Animateur"], horizontal=True)
 if st.sidebar.button("🔄 Actualiser la page"):
     st.rerun()
@@ -351,7 +372,7 @@ def formulaire_decisions(partie, e, cle):
 if role == "Animateur":
     parties = etat["parties"]
     if not parties or st.session_state.get("mode_creation"):
-        entete("Stratèj", "Créer une nouvelle partie")
+        entete("Créer une nouvelle partie")
         if parties and st.button("← Retour aux parties existantes"):
             st.session_state.mode_creation = False
             st.rerun()
@@ -477,7 +498,7 @@ if role == "Animateur":
 
     autorisees = st.session_state.setdefault("anim_auth", set())
     if nom_partie not in autorisees:
-        entete("Stratèj — Animateur", f"Partie « {nom_partie} » — accès protégé")
+        entete("Espace animateur", f"Partie « {nom_partie} » — accès protégé")
         code_saisi = st.text_input("Code d'accès animateur", type="password")
         if st.button("Entrer"):
             if code_saisi.strip().upper() == partie.code_animateur:
@@ -488,7 +509,7 @@ if role == "Animateur":
         st.stop()
 
     sim = partie.sim
-    entete("Stratèj — Animateur",
+    entete("Espace animateur",
            f"Partie « {nom_partie} » — pilotage, résultats et classement")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Trimestre", f"{min(sim.t + 1, sim.par.nb_trimestres)} / {sim.par.nb_trimestres}")
@@ -642,7 +663,7 @@ if role == "Animateur":
 # PORTAIL ÉQUIPE
 # ======================================================================
 else:
-    entete("Stratèj — Portail d'équipe",
+    entete("Portail d'équipe",
            "Décisions trimestrielles et résultats de votre entreprise")
     parties = etat["parties"]
     if not parties:
