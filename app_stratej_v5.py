@@ -26,8 +26,23 @@ st.markdown("""
     background: #F7F9FC; border: 1px solid #E3E8F0;
     border-left: 4px solid #1F3864; border-radius: 10px; padding: 12px 16px;
 }
-[data-testid="stMetricValue"], [data-testid="stMetricValue"] div { color: #1E2430 !important; }
-[data-testid="stMetricLabel"] p { color: #5A6B87 !important; font-size: 0.85rem; }
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] div {
+    color: #1E2430 !important;
+    font-size: clamp(0.85rem, 1.55vw, 1.25rem) !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+}
+[data-testid="stMetricLabel"] p {
+    color: #5A6B87 !important;
+    font-size: clamp(0.7rem, 0.95vw, 0.85rem) !important;
+}
+@media (max-width: 640px) {
+  [data-testid="stMetricValue"], [data-testid="stMetricValue"] div {
+      font-size: 0.95rem !important;
+  }
+  [data-testid="stMetric"] { padding: 10px 12px; }
+}
 button[data-baseweb="tab"] { font-weight: 600; }
 .bandeau {
     background: linear-gradient(100deg, #1F3864 0%, #2E5FA3 100%);
@@ -138,14 +153,13 @@ def afficher_etats_financiers(rapport):
         st.markdown("**Bilan (HTG)**")
         st.dataframe(pd.DataFrame({
             "Poste": ["Encaisse", "Créances clients", "Stocks",
-                      "Avances au personnel", "Actif à court terme",
+                      "Actif à court terme",
                       "Immobilisations nettes", "ACTIF TOTAL",
                       "Dettes fournisseurs", "Découvert d'urgence",
                       "Passif à court terme", "Dette à long terme",
                       "FONDS DE ROULEMENT", "Capitaux propres"],
             "Montant": [round(bi["encaisse"]), round(bi["creances"]),
-                        round(bi["stocks"]), round(bi["avances_personnel"]),
-                        round(bi["actif_court_terme"]),
+                        round(bi["stocks"]), round(bi["actif_court_terme"]),
                         round(bi["immobilisations_nettes"]),
                         round(bi["actif_total"]), round(bi["dettes_fournisseurs"]),
                         round(bi["dette_urgence"]), round(bi["passif_court_terme"]),
@@ -158,15 +172,22 @@ def afficher_flux_tresorerie(rapport):
     ft = rapport["flux_tresorerie"]
     st.markdown("**État des flux de trésorerie (HTG)**")
     st.dataframe(pd.DataFrame({
-        "Poste": ["Encaissements clients", "Paiements aux fournisseurs",
-                  "Autres décaissements d'exploitation", "Avances au personnel",
-                  "FLUX D'EXPLOITATION", "FLUX D'INVESTISSEMENT",
-                  "FLUX DE FINANCEMENT", "VARIATION DE L'ENCAISSE",
-                  "Découvert d'urgence mobilisé", "Encaisse de clôture"],
-        "Montant": [round(ft["encaissements_clients"]),
-                    round(ft["paiements_fournisseurs"]),
-                    round(ft["autres_decaissements"]),
-                    round(ft["avances_personnel"]),
+        "Poste": ["BÉNÉFICE NET",
+                  "Amortissement (charge sans sortie de fonds)",
+                  "Variation des créances clients",
+                  "Variation des stocks",
+                  "Variation des dettes fournisseurs",
+                  "FLUX D'EXPLOITATION",
+                  "FLUX D'INVESTISSEMENT (capacité et réseau)",
+                  "FLUX DE FINANCEMENT (emprunts nets)",
+                  "VARIATION DE L'ENCAISSE",
+                  "Découvert d'urgence mobilisé",
+                  "Encaisse de clôture"],
+        "Montant": [round(ft["benefice_net"]),
+                    round(ft["amortissement"]),
+                    round(ft["variation_creances"]),
+                    round(ft["variation_stocks"]),
+                    round(ft["variation_fournisseurs"]),
                     round(ft["flux_exploitation"]),
                     round(ft["flux_investissement"]),
                     round(ft["flux_financement"]),
@@ -174,6 +195,9 @@ def afficher_flux_tresorerie(rapport):
                     round(ft["decouvert_urgence"]),
                     round(ft["encaisse_cloture"])],
     }), hide_index=True, use_container_width=True)
+    st.caption("Présentation indirecte : on part du bénéfice net, on rajoute les "
+               "charges sans sortie de fonds, puis on corrige des variations du "
+               "fonds de roulement. Un bénéfice élevé n'est pas de la trésorerie.")
 
 
 def afficher_ratios(rapport):
@@ -244,6 +268,8 @@ def afficher_rh(rapport):
         mouvements.append(f"{rh['departs_naturels']} départ(s) volontaire(s)")
     if mouvements:
         st.caption("Mouvements du trimestre : " + " · ".join(mouvements))
+    if rh.get("avantages_retenus"):
+        st.caption("Avantages offerts : " + ", ".join(rh["avantages_retenus"]))
 
 
 def graphique_parts(sim):
@@ -336,25 +362,39 @@ def formulaire_decisions(partie, e, cle):
                        f"{par.salaire_marche_t(sim.t):,.0f} HTG · masse salariale "
                        f"prévue : {max(e.effectif + emb, 0) * salaire:,.0f} HTG")
         with c2:
-            avantages = st.number_input("Avantages sociaux (HTG)", 0.0,
-                                        value=float(brh.avantages_sociaux),
-                                        step=100_000.0, key=f"avs{cle}",
-                                        help="Santé, transport, cantine… : agit "
-                                             "directement sur le moral.")
             formation = st.number_input("Formation du personnel (HTG)", 0.0,
                                         value=float(brh.formation), step=100_000.0,
-                                        key=f"for{cle}",
-                                        help="Augmente durablement la compétence, "
-                                             "donc la productivité.")
+                                        key=f"for{cle}")
+            c2.caption("Augmente durablement la compétence, donc la productivité.")
+        effectif_prevu = max(e.effectif + emb, 0)
         with c3:
-            avances = st.number_input("Avances au personnel (HTG)", 0.0,
-                                      value=float(brh.avances), step=100_000.0,
-                                      key=f"avc{cle}",
-                                      help="Sortie de trésorerie ce trimestre, "
-                                           "remboursée au suivant. Soutient le moral.")
+            st.markdown("**Avantages sociaux offerts**")
+            options = {f"{a.nom} — {a.cout_par_employe:,.0f} HTG/employé": a.nom
+                       for a in par.avantages_sociaux}
+            defaut = [lib for lib, nm in options.items() if nm in brh.avantages]
+            choix = st.multiselect("Sélectionnez les avantages", list(options),
+                                   default=defaut, key=f"av{cle}",
+                                   label_visibility="collapsed")
+            avantages = [options[lib] for lib in choix]
+        retenus = [a for a in par.avantages_sociaux if a.nom in avantages]
+        cout_avantages = sum(a.cout_par_employe for a in retenus) * effectif_prevu
+        if retenus:
+            st.dataframe(pd.DataFrame([{
+                "Avantage": a.nom,
+                "Coût par employé (HTG)": round(a.cout_par_employe),
+                "Coût total (HTG)": round(a.cout_par_employe * effectif_prevu),
+                "Effet sur le moral": f"+{a.effet_moral:.0f} pts",
+                "Rétention du personnel": f"+{a.effet_retention*100:.0f} %",
+            } for a in retenus]), hide_index=True, use_container_width=True)
+            a1, a2, a3 = st.columns(3)
+            a1.metric("Coût des avantages", htg(cout_avantages))
+            a2.metric("Effet moral", f"+{min(28.0, sum(a.effet_moral for a in retenus)):.0f} pts")
+            a3.metric("Rétention", f"+{min(0.75, sum(a.effet_retention for a in retenus))*100:.0f} %")
+        else:
+            st.caption("Aucun avantage sélectionné : le moral repose uniquement "
+                       "sur le salaire offert.")
         d.rh = DecisionsRH(embauches=emb, salaire=salaire,
-                           avantages_sociaux=avantages, formation=formation,
-                           avances=avances)
+                           avantages=avantages, formation=formation)
         ratio = salaire / par.salaire_marche_t(sim.t) if par.salaire_marche_t(sim.t) else 1
         m1, m2, m3 = st.columns(3)
         m1.metric("Effectif après mouvements", max(e.effectif + emb, 0))
@@ -574,6 +614,32 @@ if role == "Animateur":
             {"Canal": "Marketing terrain", "Efficacité": 1.10, "Budget de référence (HTG)": 450_000},
         ]), num_rows="dynamic", use_container_width=True)
 
+        st.subheader("Partenariats proposés aux équipes")
+        st.caption("Chaque partenariat est souscrit pour un trimestre. "
+                   "« Présence » élargit la couverture géographique, « Qualité » "
+                   "améliore l'image du produit, « Réduction de coût » agit sur le "
+                   "coût unitaire de production (0,06 = 6 % de moins).")
+        df_part = st.data_editor(pd.DataFrame([
+            {"Partenariat": "Distributeur régional", "Coût (HTG/trim.)": 800_000,
+             "Effet présence": 0.30, "Effet qualité": 0.00, "Réduction de coût": 0.00,
+             "Description": "Élargit la distribution dans vos départements actifs."},
+            {"Partenariat": "Coopérative de producteurs", "Coût (HTG/trim.)": 700_000,
+             "Effet présence": 0.00, "Effet qualité": 0.05, "Réduction de coût": 0.06,
+             "Description": "Sécurise l'approvisionnement : coût réduit, qualité accrue."},
+            {"Partenariat": "Programme communautaire", "Coût (HTG/trim.)": 600_000,
+             "Effet présence": 0.10, "Effet qualité": 0.10, "Réduction de coût": 0.00,
+             "Description": "Renforce l'image de marque et l'ancrage local."},
+        ]), num_rows="dynamic", use_container_width=True)
+
+        st.subheader("Qualités d'intrants proposées")
+        st.caption("Le facteur de coût multiplie le coût unitaire de production ; "
+                   "l'effet qualité s'ajoute à l'attractivité du produit.")
+        df_intr = st.data_editor(pd.DataFrame([
+            {"Intrant": "Économique", "Facteur de coût": 0.85, "Effet qualité": -0.08},
+            {"Intrant": "Standard", "Facteur de coût": 1.00, "Effet qualité": 0.00},
+            {"Intrant": "Premium", "Facteur de coût": 1.22, "Effet qualité": 0.12},
+        ]), num_rows="dynamic", use_container_width=True)
+
         st.subheader("Environnement économique")
         defaut_dem = ["Stable", "Croissance modérée", "Récession", "Stable",
                       "Expansion", "Forte récession", "Ralentissement", "Croissance modérée"]
@@ -623,7 +689,7 @@ if role == "Animateur":
             impot = c5.number_input("Taux d'imposition", 0.0, 0.6, 0.30, 0.05, format="%.2f")
 
         if st.button("Créer la partie", type="primary"):
-            from stratej_moteur_v3 import Departement, Canal
+            from stratej_moteur_v3 import Departement, Canal, Partenariat, Intrant
             noms = [n.strip() for n in noms_txt.splitlines() if n.strip()]
             produits = [Produit(nom=str(l["Nom"]).strip(),
                                 demande_base=float(l["Demande de base (u/trim.)"]),
@@ -640,11 +706,24 @@ if role == "Animateur":
             canaux = [Canal(nom=str(l["Canal"]).strip(), efficacite=float(l["Efficacité"]),
                             budget_reference=float(l["Budget de référence (HTG)"]))
                       for _, l in df_can.iterrows() if str(l["Canal"]).strip()]
+            partenariats = [Partenariat(
+                nom=str(l["Partenariat"]).strip(),
+                cout=float(l["Coût (HTG/trim.)"]),
+                effet_presence=float(l["Effet présence"]),
+                effet_qualite=float(l["Effet qualité"]),
+                effet_cout=float(l["Réduction de coût"]),
+                description=str(l["Description"]).strip())
+                for _, l in df_part.iterrows() if str(l["Partenariat"]).strip()]
+            intrants = [Intrant(nom=str(l["Intrant"]).strip(),
+                                facteur_cout=float(l["Facteur de coût"]),
+                                effet_qualite=float(l["Effet qualité"]))
+                        for _, l in df_intr.iterrows() if str(l["Intrant"]).strip()]
             labels_dem = list(df_env["Conjoncture de la demande"])
             labels_cout = list(df_env["Coût des intrants"])
             par = Parametres(
                 nb_trimestres=int(nb), produits=produits or [Produit()],
                 departements=departements, canaux=canaux,
+                partenariats=partenariats,
                 conjoncture=[NIVEAUX_DEMANDE.get(l, 1.0) for l in labels_dem],
                 indice_cout=[NIVEAUX_COUT.get(l, 1.0) for l in labels_cout],
                 conjoncture_labels=labels_dem, indice_cout_labels=labels_cout,
@@ -655,6 +734,8 @@ if role == "Animateur":
                 inflation_trimestrielle=inflation, croissance_trimestrielle=croissance,
                 part_ventes_a_credit=credit_v, part_achats_a_credit=credit_a,
                 taux_interet=taux, taux_impot=impot)
+            if intrants:
+                par.intrants = intrants
             if not nom_partie_new.strip():
                 st.error("Donne un nom à la partie.")
             elif nom_partie_new.strip() in parties:

@@ -69,6 +69,16 @@ class Departement:
 
 
 @dataclass
+class AvantageSocial:
+    """Avantage offert au personnel : coût par employé et par trimestre."""
+    nom: str = "Assurance santé"
+    cout_par_employe: float = 4_000
+    effet_moral: float = 8.0        # points de moral apportés
+    effet_retention: float = 0.25   # réduction du taux de départs volontaires
+    description: str = "Couverture médicale de base pour le personnel."
+
+
+@dataclass
 class Partenariat:
     """Accord optionnel souscrit pour un trimestre."""
     nom: str = "Distributeur régional"
@@ -120,6 +130,20 @@ class Parametres:
         Departement("Sud", 0.13, 900_000, 95_000),
         Departement("Centre", 0.14, 900_000, 95_000),
     ])
+    avantages_sociaux: list = field(default_factory=lambda: [
+        AvantageSocial("Assurance santé", 4_000, 9.0, 0.30,
+                       "Couverture médicale de base pour le personnel."),
+        AvantageSocial("Transport", 2_000, 5.0, 0.15,
+                       "Prise en charge des déplacements domicile-travail."),
+        AvantageSocial("Cantine / repas", 2_500, 6.0, 0.15,
+                       "Repas fournis sur le lieu de travail."),
+        AvantageSocial("Prime de rendement", 5_000, 8.0, 0.20,
+                       "Prime trimestrielle liée aux résultats."),
+        AvantageSocial("Garde d'enfants", 3_000, 5.0, 0.20,
+                       "Appui à la garde des jeunes enfants."),
+        AvantageSocial("Assurance vie", 1_500, 3.0, 0.10,
+                       "Protection de la famille en cas de décès."),
+    ])
     partenariats: list = field(default_factory=lambda: [
         Partenariat("Distributeur régional", 800_000, 0.30, 0.00, 0.00,
                     "Élargit la distribution dans vos départements actifs."),
@@ -150,7 +174,6 @@ class Parametres:
     cout_licenciement: float = 40_000     # indemnité de départ
     moral_initial: float = 60.0
     rendement_formation: float = 0.00004  # gain de compétence par HTG investi
-    rendement_avantages: float = 0.00003  # effet des avantages sociaux sur le moral
     competence_max: float = 0.30          # gain de productivité maximal
 
     # Commercial
@@ -222,10 +245,9 @@ class DecisionsProduit:
 @dataclass
 class DecisionsRH:
     embauches: int = 0                 # positif = recrutement, négatif = départs
-    salaire: float = 22_000            # salaire trimestriel moyen offert
-    avantages_sociaux: float = 0.0     # budget total du trimestre
+    salaire: float = 20_000            # salaire trimestriel moyen offert
+    avantages: list = field(default_factory=list)   # noms des avantages retenus
     formation: float = 0.0             # budget total du trimestre
-    avances: float = 0.0               # avances consenties au personnel
 
 
 @dataclass
@@ -327,22 +349,25 @@ def maj_ressources_humaines(par: Parametres, e: Entreprise, rh: DecisionsRH,
     departs_voulus = min(departs_voulus, e.effectif)
     e.effectif = e.effectif + embauches - departs_voulus
 
-    # Départs volontaires liés au moral (rotation du personnel)
-    taux_rotation = max(0.0, (55.0 - e.moral) / 55.0) * 0.12
+    # Avantages sociaux retenus : coût, effet sur le moral et sur la rétention
+    choisis = [a for a in par.avantages_sociaux if a.nom in rh.avantages]
+    cout_avantages = sum(a.cout_par_employe for a in choisis) * e.effectif
+    gain_moral = min(28.0, sum(a.effet_moral for a in choisis))
+    retention = min(0.75, sum(a.effet_retention for a in choisis))
+
+    # Départs volontaires liés au moral, atténués par les avantages
+    taux_rotation = max(0.0, (55.0 - e.moral) / 55.0) * 0.12 * (1 - retention)
     departs_naturels = int(round(e.effectif * taux_rotation))
     e.effectif = max(0, e.effectif - departs_naturels)
 
     # Moral : salaire relatif, avantages, formation, stabilité de l'emploi
     ratio_salaire = rh.salaire / salaire_marche if salaire_marche > 0 else 1.0
     cible = 50.0 + 45.0 * math.tanh(2.2 * (ratio_salaire - 1.0))
-    par_tete = (rh.avantages_sociaux / e.effectif) if e.effectif > 0 else 0.0
-    cible += min(25.0, par_tete * par.rendement_avantages * 100)
+    cible += gain_moral
     form_tete = (rh.formation / e.effectif) if e.effectif > 0 else 0.0
     cible += min(12.0, form_tete * par.rendement_formation * 100)
     if departs_voulus > 0:
         cible -= min(18.0, 45.0 * departs_voulus / max(e.effectif + departs_voulus, 1))
-    if rh.avances > 0:
-        cible += 3.0
     cible = max(5.0, min(100.0, cible))
     e.moral += (cible - e.moral) * 0.55        # ajustement progressif
 
@@ -358,13 +383,15 @@ def maj_ressources_humaines(par: Parametres, e: Entreprise, rh: DecisionsRH,
 
     couts = {
         "salaires": e.effectif * rh.salaire,
-        "avantages_sociaux": rh.avantages_sociaux,
+        "avantages_sociaux": cout_avantages,
         "formation": rh.formation,
         "recrutement": embauches * par.cout_embauche,
         "licenciement": departs_voulus * par.cout_licenciement,
     }
     return {
         "couts": couts, "total": sum(couts.values()),
+        "avantages_retenus": [a.nom for a in choisis],
+        "gain_moral_avantages": gain_moral, "retention": retention,
         "embauches": embauches, "departs_voulus": departs_voulus,
         "departs_naturels": departs_naturels,
         "heures_disponibles": heures_disponibles,
@@ -492,9 +519,9 @@ def valider(par: Parametres, e: Entreprise, d: Decisions, t: int) -> tuple:
     d.nouvel_emprunt = max(d.nouvel_emprunt, 0.0)
     d.remboursement = min(max(d.remboursement, 0.0), e.dette)
     d.rh.salaire = max(d.rh.salaire, 0.0)
-    d.rh.avantages_sociaux = max(d.rh.avantages_sociaux, 0.0)
     d.rh.formation = max(d.rh.formation, 0.0)
-    d.rh.avances = max(d.rh.avances, 0.0)
+    noms_av = [a.nom for a in par.avantages_sociaux]
+    d.rh.avantages = [x for x in d.rh.avantages if x in noms_av]
     d.rh.embauches = int(d.rh.embauches)
     if d.rh.embauches < -e.effectif:
         d.rh.embauches = -e.effectif
@@ -551,7 +578,7 @@ def cout_engage(par: Parametres, e: Entreprise, d: Decisions, t: int,
             + e.dettes_fournisseurs
             + sum(d.marketing.values()) + sum(d.marketing_local.values())
             + sum(dp.rd_qualite + dp.rd_procede for dp in d.produits.values())
-            + rh_info["total"] + d.rh.avances
+            + rh_info["total"]
             + sum(pa.cout for pa in par.partenariats if pa.nom in d.partenariats)
             + pdv_ouverts + d.invest_capacite + d.remboursement)
 
@@ -719,6 +746,7 @@ class Simulation:
                  rh_info: dict, remise: float) -> dict:
         par = self.par
         rev_prec = e.rapports[-1]["etat_resultats"]["revenus"] if e.rapports else None
+        stocks_ouverture = e.stock_valeur_totale   # avant production du trimestre
 
         detail_produits = {}
         revenus = cmv = cout_production = rd_total = 0.0
@@ -786,17 +814,15 @@ class Simulation:
                                   + dettes_ouverture)
         e.dettes_fournisseurs = cout_production * par.part_achats_a_credit
 
-        # Avances au personnel : sorties ce trimestre, remboursées au suivant
-        avances_remboursees = e.avances_personnel
-        nouvelles_avances = d.rh.avances
-        e.avances_personnel = nouvelles_avances
-
         autres_decaissements = (couts_fixes + marketing + rd_total + commissions
                                 + charges_rh + cout_partenariats + stockage
                                 + interets + impot)
-        flux_exploitation = (encaissements + avances_remboursees
-                             - paiements_fournisseurs - autres_decaissements
-                             - nouvelles_avances)
+        flux_exploitation = (encaissements - paiements_fournisseurs
+                             - autres_decaissements)
+        # Variations du fonds de roulement (pour la présentation indirecte)
+        var_creances = e.creances - creances_ouverture
+        var_stocks = e.stock_valeur_totale - stocks_ouverture
+        var_fournisseurs = e.dettes_fournisseurs - dettes_ouverture
         flux_investissement = -(d.invest_capacite + capex_pdv)
         flux_financement = d.nouvel_emprunt - d.remboursement
 
@@ -863,10 +889,14 @@ class Simulation:
                 "benefice_net": benefice_net,
             },
             "flux_tresorerie": {
+                "benefice_net": benefice_net,
+                "amortissement": amortissement,
+                "variation_creances": -var_creances,
+                "variation_stocks": -var_stocks,
+                "variation_fournisseurs": var_fournisseurs,
                 "encaissements_clients": encaissements,
                 "paiements_fournisseurs": -paiements_fournisseurs,
                 "autres_decaissements": -autres_decaissements,
-                "avances_personnel": avances_remboursees - nouvelles_avances,
                 "flux_exploitation": flux_exploitation,
                 "flux_investissement": flux_investissement,
                 "flux_financement": flux_financement,
@@ -896,6 +926,8 @@ class Simulation:
                 "embauches": rh_info["embauches"],
                 "departs_voulus": rh_info["departs_voulus"],
                 "departs_naturels": rh_info["departs_naturels"],
+                "avantages_retenus": rh_info["avantages_retenus"],
+                "retention": rh_info["retention"],
                 "detail_couts": rh_info["couts"],
             },
             "reseau": {"pdv": dict(e.pdv), "total_pdv": e.nb_pdv,
