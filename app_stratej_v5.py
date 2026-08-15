@@ -26,12 +26,21 @@ st.markdown("""
     background: #F7F9FC; border: 1px solid #E3E8F0;
     border-left: 4px solid #1F3864; border-radius: 10px; padding: 12px 16px;
 }
-[data-testid="stMetricValue"], [data-testid="stMetricValue"] div {
+[data-testid="stMetricValue"] {
     color: #1E2430 !important;
-    font-size: clamp(0.85rem, 1.55vw, 1.25rem) !important;
-    line-height: 1.25 !important;
+    font-size: clamp(0.8rem, 1.4vw, 1.15rem) !important;
+    line-height: 1.3 !important;
     white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
     overflow-wrap: anywhere;
+}
+[data-testid="stMetricValue"] > div {
+    color: #1E2430 !important;
+    font-size: inherit !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 [data-testid="stMetricLabel"] p {
     color: #5A6B87 !important;
@@ -101,7 +110,23 @@ def fmt(v, pct=False, dec=2):
 
 
 def htg(v):
+    """Montant complet, pour les tableaux et les textes."""
     return f"{v:,.0f} HTG".replace(",", " ")
+
+
+def htg_court(v):
+    """Montant abrégé, pour les cartes de métriques (évite la troncature)."""
+    if v is None:
+        return "—"
+    signe = "-" if v < 0 else ""
+    a = abs(v)
+    if a >= 1_000_000_000:
+        return f"{signe}{a/1_000_000_000:.2f}".replace(".", ",") + " Md HTG"
+    if a >= 1_000_000:
+        return f"{signe}{a/1_000_000:.2f}".replace(".", ",") + " M HTG"
+    if a >= 10_000:
+        return f"{signe}{a/1_000:.0f} k HTG"
+    return f"{signe}{a:,.0f} HTG".replace(",", " ")
 
 
 # ======================================================================
@@ -387,7 +412,7 @@ def formulaire_decisions(partie, e, cle):
                 "Rétention du personnel": f"+{a.effet_retention*100:.0f} %",
             } for a in retenus]), hide_index=True, use_container_width=True)
             a1, a2, a3 = st.columns(3)
-            a1.metric("Coût des avantages", htg(cout_avantages))
+            a1.metric("Coût des avantages", htg_court(cout_avantages))
             a2.metric("Effet moral", f"+{min(28.0, sum(a.effet_moral for a in retenus)):.0f} pts")
             a3.metric("Rétention", f"+{min(0.75, sum(a.effet_retention for a in retenus))*100:.0f} %")
         else:
@@ -473,11 +498,11 @@ def formulaire_decisions(partie, e, cle):
                                                                 + nb_ouv)
         total_local = sum(d.marketing_local.values())
         g1, g2, g3 = st.columns(3)
-        g1.metric("Ouvertures ce trimestre", htg(cout_ouvertures),
+        g1.metric("Ouvertures ce trimestre", htg_court(cout_ouvertures),
                   help="Investissement décaissé immédiatement.")
-        g2.metric("Exploitation du réseau", htg(exploitation_future),
+        g2.metric("Exploitation du réseau", htg_court(exploitation_future),
                   help="Charge fixe de chaque trimestre, réseau actuel compris.")
-        g3.metric("Marketing local", htg(total_local))
+        g3.metric("Marketing local", htg_court(total_local))
 
     # ---------------- PARTENARIATS ----------------
     if par.partenariats:
@@ -524,12 +549,12 @@ def formulaire_decisions(partie, e, cle):
     dispo = e.encaisse + d.nouvel_emprunt + e.creances
     st.markdown("#### 💰 Budget de trésorerie du trimestre")
     b1, b2, b3 = st.columns(3)
-    b1.metric("Ressources disponibles", htg(dispo),
+    b1.metric("Ressources disponibles", htg_court(dispo),
               help="Encaisse + créances à encaisser + nouvel emprunt.")
-    b2.metric("Dépenses engagées", htg(depenses),
+    b2.metric("Dépenses engagées", htg_court(depenses),
               help="Production, marketing, R&D, personnel, réseau, partenariats, "
                    "investissement et remboursement.")
-    b3.metric("Marge de manœuvre", htg(dispo - depenses))
+    b3.metric("Marge de manœuvre", htg_court(dispo - depenses))
     budget_ok = depenses <= dispo + 1e-6
     if not budget_ok:
         st.error("🚫 Vos dépenses dépassent vos ressources. Sans emprunt ni levée "
@@ -947,13 +972,14 @@ else:
 
     st.subheader(f"{nom} — trimestre "
                  f"{min(sim.t + 1, sim.par.nb_trimestres)} / {sim.par.nb_trimestres}")
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Encaisse", htg(e.encaisse))
-    c2.metric("Créances", htg(e.creances))
-    c3.metric("Capacité", f"{e.capacite:,.0f} u")
-    c4.metric("Effectif", e.effectif)
-    c5.metric("Moral", f"{e.moral:.0f} / 100")
-    c6.metric("Dette totale", htg(e.dette + e.dette_urgence))
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Encaisse", htg_court(e.encaisse))
+    c2.metric("Créances clients", htg_court(e.creances))
+    c3.metric("Dette totale", htg_court(e.dette + e.dette_urgence))
+    c4, c5, c6 = st.columns(3)
+    c4.metric("Capacité", f"{e.capacite:,.0f} u".replace(",", " "))
+    c5.metric("Effectif", e.effectif)
+    c6.metric("Moral", f"{e.moral:.0f} / 100")
 
     onglets = st.tabs(["📝 Mes décisions", "📊 Mes résultats", "🌍 Le marché"])
 
@@ -997,10 +1023,10 @@ else:
             if rap["ajustements"]:
                 st.warning(" · ".join(rap["ajustements"]))
             r1, r2, r3, r4 = st.columns(4)
-            r1.metric("Revenus", htg(rap["etat_resultats"]["revenus"]))
-            r2.metric("Bénéfice net", htg(rap["etat_resultats"]["benefice_net"]))
-            r3.metric("Flux d'exploitation", htg(rap["flux_tresorerie"]["flux_exploitation"]))
-            r4.metric("Profit cumulé", htg(rap["indicateurs"]["profit_cumule"]))
+            r1.metric("Revenus", htg_court(rap["etat_resultats"]["revenus"]))
+            r2.metric("Bénéfice net", htg_court(rap["etat_resultats"]["benefice_net"]))
+            r3.metric("Flux d'exploitation", htg_court(rap["flux_tresorerie"]["flux_exploitation"]))
+            r4.metric("Profit cumulé", htg_court(rap["indicateurs"]["profit_cumule"]))
             afficher_detail_produits(rap)
             afficher_rh(rap)
             afficher_etats_financiers(rap)
