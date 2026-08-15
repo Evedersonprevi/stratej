@@ -326,15 +326,15 @@ def formulaire_decisions(partie, e, cle):
         c1, c2, c3 = st.columns(3)
         with c1:
             emb = st.number_input("Embauches (négatif = départs)", -200, 500,
-                                  int(brh.embauches), 1, key=f"emb{cle}",
-                                  help=f"Recrutement : {par.cout_embauche:,.0f} HTG "
-                                       f"par personne. Licenciement : "
-                                       f"{par.cout_licenciement:,.0f} HTG.")
+                                  int(brh.embauches), 1, key=f"emb{cle}")
+            c1.caption(f"Recrutement : {par.cout_embauche:,.0f} HTG/personne · "
+                       f"licenciement : {par.cout_licenciement:,.0f} HTG/personne")
             salaire = st.number_input("Salaire trimestriel moyen (HTG)", 0.0,
                                       value=float(brh.salaire), step=1_000.0,
-                                      key=f"sal{cle}",
-                                      help=f"Salaire du marché ce trimestre : "
-                                           f"{par.salaire_marche_t(sim.t):,.0f} HTG.")
+                                      key=f"sal{cle}")
+            c1.caption(f"Salaire du marché ce trimestre : "
+                       f"{par.salaire_marche_t(sim.t):,.0f} HTG · masse salariale "
+                       f"prévue : {max(e.effectif + emb, 0) * salaire:,.0f} HTG")
         with c2:
             avantages = st.number_input("Avantages sociaux (HTG)", 0.0,
                                         value=float(brh.avantages_sociaux),
@@ -378,9 +378,9 @@ def formulaire_decisions(partie, e, cle):
             with col:
                 d.marketing[canal.nom] = st.number_input(
                     canal.nom, 0.0, value=float(base.marketing.get(canal.nom, 0.0)),
-                    step=100_000.0, key=f"mk{cle}{canal.nom}",
-                    help=f"Efficacité relative {canal.efficacite:.2f} · "
-                         f"budget de référence {canal.budget_reference:,.0f} HTG")
+                    step=100_000.0, key=f"mk{cle}{canal.nom}")
+                col.caption(f"Efficacité {canal.efficacite:.2f} · référence "
+                            f"{canal.budget_reference:,.0f} HTG")
         d.commission = st.slider(
             "Commission versée aux vendeurs (% du chiffre d'affaires)",
             0.0, 20.0, float(base.commission * 100), 0.5, key=f"com{cle}",
@@ -394,32 +394,65 @@ def formulaire_decisions(partie, e, cle):
     st.markdown("#### 🗺️ Déploiement géographique")
     with st.container(border=True):
         st.caption("Sans point de vente ni marketing local dans un département, "
-                   "vous n'y captez presque rien.")
+                   "vous n'y captez presque rien. L'ouverture est un "
+                   "investissement ponctuel ; l'exploitation est une charge de "
+                   "chaque trimestre suivant.")
+        st.dataframe(pd.DataFrame([{
+            "Département": dep.nom,
+            "Part du marché": f"{dep.poids*100:.0f} %",
+            "Mes points de vente": e.pdv.get(dep.nom, 0),
+            "Ouvrir un point (HTG)": round(dep.cout_pdv),
+            "Exploitation (HTG/trim.)": round(dep.cout_exploitation_pdv),
+        } for dep in par.departements]), hide_index=True, use_container_width=True)
+
+        cout_ouvertures = 0.0
+        exploitation_future = 0.0
         for dep in par.departements:
-            c1, c2, c3, c4 = st.columns([2, 1, 1.4, 1.4])
-            c1.markdown(f"**{dep.nom}**  \n<span style='color:#5A6B87;font-size:.85rem'>"
-                        f"{dep.poids*100:.0f} % du marché national</span>",
-                        unsafe_allow_html=True)
-            c2.metric("Points", e.pdv.get(dep.nom, 0))
-            d.ouvertures_pdv[dep.nom] = c3.number_input(
+            c1, c2, c3 = st.columns([2.2, 1.4, 1.4])
+            c1.markdown(
+                f"**{dep.nom}**  \n<span style='color:#5A6B87;font-size:.85rem'>"
+                f"Ouverture {dep.cout_pdv:,.0f} HTG · exploitation "
+                f"{dep.cout_exploitation_pdv:,.0f} HTG/trim. · "
+                f"{e.pdv.get(dep.nom, 0)} point(s) actuellement</span>",
+                unsafe_allow_html=True)
+            nb_ouv = c2.number_input(
                 f"Ouvertures — {dep.nom}", 0, 10,
-                int(base.ouvertures_pdv.get(dep.nom, 0)), 1, key=f"pdv{cle}{dep.nom}",
-                help=f"Ouverture : {dep.cout_pdv:,.0f} HTG · exploitation : "
-                     f"{dep.cout_exploitation_pdv:,.0f} HTG/trimestre")
-            d.marketing_local[dep.nom] = c4.number_input(
+                int(base.ouvertures_pdv.get(dep.nom, 0)), 1, key=f"pdv{cle}{dep.nom}")
+            d.ouvertures_pdv[dep.nom] = nb_ouv
+            d.marketing_local[dep.nom] = c3.number_input(
                 f"Marketing local — {dep.nom}", 0.0,
                 value=float(base.marketing_local.get(dep.nom, 0.0)), step=50_000.0,
                 key=f"mkl{cle}{dep.nom}")
+            if nb_ouv:
+                c1.caption(f"→ {nb_ouv} ouverture(s) : "
+                           f"{dep.cout_pdv * nb_ouv:,.0f} HTG maintenant, puis "
+                           f"{dep.cout_exploitation_pdv * nb_ouv:,.0f} HTG "
+                           f"par trimestre.")
+            cout_ouvertures += dep.cout_pdv * nb_ouv
+            exploitation_future += dep.cout_exploitation_pdv * (e.pdv.get(dep.nom, 0)
+                                                                + nb_ouv)
+        total_local = sum(d.marketing_local.values())
+        g1, g2, g3 = st.columns(3)
+        g1.metric("Ouvertures ce trimestre", htg(cout_ouvertures),
+                  help="Investissement décaissé immédiatement.")
+        g2.metric("Exploitation du réseau", htg(exploitation_future),
+                  help="Charge fixe de chaque trimestre, réseau actuel compris.")
+        g3.metric("Marketing local", htg(total_local))
 
     # ---------------- PARTENARIATS ----------------
     if par.partenariats:
         st.markdown("#### 🤝 Partenariats")
         with st.container(border=True):
             for pa in par.partenariats:
-                if st.checkbox(f"{pa.nom} — {htg(pa.cout)} · {pa.description}",
+                if st.checkbox(f"{pa.nom} — {htg(pa.cout)} par trimestre · "
+                               f"{pa.description}",
                                value=pa.nom in base.partenariats,
                                key=f"pa{cle}{pa.nom}"):
                     d.partenariats.append(pa.nom)
+            total_part = sum(pa.cout for pa in par.partenariats
+                             if pa.nom in d.partenariats)
+            if total_part:
+                st.caption(f"Coût total des partenariats retenus : {htg(total_part)}")
 
     # ---------------- FINANCEMENT ----------------
     st.markdown("#### 🏦 Investissement et financement")
@@ -427,9 +460,10 @@ def formulaire_decisions(partie, e, cle):
         c1, c2, c3 = st.columns(3)
         d.invest_capacite = c1.number_input(
             "Investissement en capacité (HTG)", 0.0,
-            value=float(base.invest_capacite), step=500_000.0, key=f"ic{cle}",
-            help=f"{par.cout_capacite:,.0f} HTG par unité de capacité, "
-                 "disponible au trimestre suivant.")
+            value=float(base.invest_capacite), step=500_000.0, key=f"ic{cle}")
+        c1.caption(f"{par.cout_capacite:,.0f} HTG par unité de capacité "
+                   f"(+{d.invest_capacite / par.cout_capacite:,.0f} u au "
+                   f"trimestre suivant)")
         d.nouvel_emprunt = c2.number_input("Nouvel emprunt (HTG)", 0.0,
                                            value=float(base.nouvel_emprunt),
                                            step=500_000.0, key=f"ne{cle}")
